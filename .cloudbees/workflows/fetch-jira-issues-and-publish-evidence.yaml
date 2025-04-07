@@ -1,0 +1,26 @@
+apiVersion: automation.cloudbees.io/v1alpha1
+kind: workflow
+name: Fetch Jira Issues and Publish Evidence
+on:
+  workflow_dispatch:
+jobs:
+  fetch-jira-evidence:
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Set up jq
+        with:
+          packages: jq
+          version: 1
+        uses: cloudbees-io/checkout@v1
+      - name: Verify Jira Connection
+        run: "sh -c '  echo \"🔐 Verifying Jira connection...\";  STATUS_CODE=$(curl -s -o /dev/null -w \"%{http_code}\"     -u \"$JIRA_USER_EMAIL:$JIRA_API_TOKEN\"     -H \"Accept: application/json\"     \"$JIRA_BASE_URL/rest/api/3/myself\");  if [ \"$STATUS_CODE\" -ne 200 ]; then    echo \"❌ Failed to connect to Jira. Status code: $STATUS_CODE\";    exit 1;  fi  echo \"✅ Jira connection successful.\";'"
+        uses: docker://curlimages/curl:latest
+      - name: Query Jira Issues
+        run: "sh -c '  echo \"📥 Fetching Jira issues with JQL: $JQL\";  ENCODED_JQL=$(echo \"$JQL\" | jq -s -R -r @uri);  RESPONSE=$(curl -s -u \"$JIRA_USER_EMAIL:$JIRA_API_TOKEN\"     -H \"Accept: application/json\"     \"$JIRA_BASE_URL/rest/api/3/search?jql=$ENCODED_JQL\");  echo \"$RESPONSE\" | jq -r \".issues[] | \\\"- \\(.key): \\(.fields.summary)\\\"\" > jira_issues.md;  echo \"📝 Retrieved issues:\";  cat jira_issues.md;'"
+        uses: docker://curlimages/curl:latest
+      - name: Publish Jira Query Results to Evidence Tab
+        with:
+          path: jira_issues.md
+          action-name: Jira Issues from CB-Demo
+        uses: cloudbees-io/attach-evidence@v1
